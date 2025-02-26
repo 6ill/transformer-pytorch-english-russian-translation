@@ -1,0 +1,9 @@
+# Ignore directories
+runs/
+weights/
+vocabs/
+__pycache__/
+
+# Ignore specific file types
+*.png
+*.txt
