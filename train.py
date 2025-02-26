@@ -14,26 +14,8 @@ from dataset import BilingualDataset, causal_mask
 from config import get_config, get_weights_file_path, latest_weights_file_path
 from model import build_transformer, Transformer
 import torchmetrics
-
-# Add label smoothing
-class LabelSmoothing(nn.Module):
-    def __init__(self, size, padding_idx, smoothing=0.0):
-        super(LabelSmoothing, self).__init__()
-        self.criterion = nn.KLDivLoss(reduction='sum')
-        self.padding_idx = padding_idx
-        self.confidence = 1.0 - smoothing
-        self.smoothing = smoothing
-        self.size = size
-
-    def forward(self, x, target):
-        true_dist = x.data.clone()
-        true_dist.fill_(self.smoothing / (self.size - 2))
-        true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
-        true_dist[:, self.padding_idx] = 0
-        mask = torch.nonzero(target.data == self.padding_idx)
-        if mask.dim() > 0:
-            true_dist.index_fill_(0, mask.squeeze(), 0.0)
-        return self.criterion(x, true_dist)
+import numpy as np
+from torchtext.vocab.vectors import FastText
 
 # Learning rate scheduler
 def get_lr_scheduler(optimizer, d_model, warmup_steps=4000):
@@ -150,6 +132,20 @@ def get_or_build_tokenizer(config, dataset, lang):
         tokenizer = Tokenizer.from_file(str(tokenizer_path))
     return tokenizer
 
+def load_fasttext_embeddings(tokenizer, lang):
+    fasttext = FastText(language=lang)
+    vocab_size = tokenizer.get_vocab_size()
+    embedding_dim = fasttext.dim
+    embedding_matrix = np.zeros((vocab_size, embedding_dim))
+
+    for word, idx in tokenizer.get_vocab().items():
+        if word in fasttext.stoi:
+            embedding_matrix[idx] = fasttext.vectors[fasttext.stoi[word]]
+        else:
+            embedding_matrix[idx] = np.random.normal(scale=0.6, size=(embedding_dim,))
+
+    return torch.Tensor(embedding_matrix)
+
 def get_dataset(config):
     dataset_raw = load_dataset(config['datasource'], f'{config["lang_src"]}-{config["lang_tgt"]}', split='train')
 
@@ -196,7 +192,10 @@ def train_model(config):
     Path(f"{config['datasource']}_{config['model_folder']}").mkdir(parents=True, exist_ok=True)
 
     train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt = get_dataset(config)
-    model = get_model(config, tokenizer_src.get_vocab_size(), tokenizer_tgt.get_vocab_size()).to(device)
+    # Load pre-trained embeddings
+    src_embeddings = load_fasttext_embeddings(tokenizer_src, config['lang_src'])
+    tgt_embeddings = load_fasttext_embeddings(tokenizer_tgt, config['lang_tgt'])
+    model = get_model(config, tokenizer_src.get_vocab_size(), tokenizer_tgt.get_vocab_size(), pre_trained_embeddings=(src_embeddings, tgt_embeddings)).to(device)
     # Tensorboard
     writer = SummaryWriter(config['experiment_name'])
 
@@ -219,7 +218,7 @@ def train_model(config):
     else:
         print('No model to preload, starting from scratch')
 
-    loss_fn = LabelSmoothing(size=tokenizer_tgt.get_vocab_size(), padding_idx=tokenizer_src.token_to_id('[PAD]'), smoothing=0.1).to(device)
+    loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer_src.token_to_id('[PAD]'), label_smoothing=0.1).to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
         torch.cuda.empty_cache()

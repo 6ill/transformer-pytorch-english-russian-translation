@@ -219,10 +219,10 @@ class Transformer(nn.Module):
         return self.projection_layer(x)
     
 # all default values are based on "Attention is All You Need" Paper
-def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, d_model: int=1024, N: int=12, h: int=16, dropout: float=0.1, d_ff: int=4096, pre_trained_embeddings=None) -> Transformer:
+def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, d_model: int=1024, N: int=12, h: int=16, dropout: float=0.1, d_ff: int=4096, pre_trained_embeddings:list=None) -> Transformer:
     # Create the embedding layers
-    src_embed = InputEmbeddings(d_model, src_vocab_size, pre_trained_embeddings)
-    tgt_embed = InputEmbeddings(d_model, tgt_vocab_size, pre_trained_embeddings)
+    src_embed = InputEmbeddings(d_model, src_vocab_size, pre_trained_embeddings[0] if pre_trained_embeddings else None)
+    tgt_embed = InputEmbeddings(d_model, tgt_vocab_size, pre_trained_embeddings[1] if pre_trained_embeddings else None)
 
     # Create the positional encoding layers
     # Actually we dont have to make 2 encodings but for edu purpose, it just make it clears
