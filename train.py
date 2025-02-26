@@ -12,7 +12,7 @@ from tokenizers.pre_tokenizers import Whitespace
 from tqdm import tqdm
 from dataset import BilingualDataset, causal_mask
 from config import get_config, get_weights_file_path, latest_weights_file_path
-from model import build_transformer, Transformer, LabelSmoothing, get_lr_scheduler
+from model import build_transformer, Transformer
 import torchmetrics
 
 # Add label smoothing
