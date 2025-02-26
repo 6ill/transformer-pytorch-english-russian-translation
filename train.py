@@ -15,6 +15,31 @@ from config import get_config, get_weights_file_path, latest_weights_file_path
 from model import build_transformer, Transformer, LabelSmoothing, get_lr_scheduler
 import torchmetrics
 
+# Add label smoothing
+class LabelSmoothing(nn.Module):
+    def __init__(self, size, padding_idx, smoothing=0.0):
+        super(LabelSmoothing, self).__init__()
+        self.criterion = nn.KLDivLoss(reduction='sum')
+        self.padding_idx = padding_idx
+        self.confidence = 1.0 - smoothing
+        self.smoothing = smoothing
+        self.size = size
+
+    def forward(self, x, target):
+        true_dist = x.data.clone()
+        true_dist.fill_(self.smoothing / (self.size - 2))
+        true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
+        true_dist[:, self.padding_idx] = 0
+        mask = torch.nonzero(target.data == self.padding_idx)
+        if mask.dim() > 0:
+            true_dist.index_fill_(0, mask.squeeze(), 0.0)
+        return self.criterion(x, true_dist)
+
+# Learning rate scheduler
+def get_lr_scheduler(optimizer, d_model, warmup_steps=4000):
+    def lr_lambda(step):
+        return (d_model ** -0.5) * min(step ** -0.5, step * (warmup_steps ** -1.5))
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
 def greedy_decode(model:Transformer, source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
     sos_idx = tokenizer_src.token_to_id('[SOS]')
